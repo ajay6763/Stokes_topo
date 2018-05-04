@@ -272,8 +272,31 @@ def twoDadvdiff (fin,vx,vz,dx,dz,dt):
     # Add dt * df/dt-vector to old solution:
     fout=fin+dt*dfdt
     return fout
+###################################################################################################################################################
 # Main code: 
+###################################################################################################################################################
 # Initialisation:
+###################################################################################################################################################
+# Mesh setup:
+###################################################################################################################################################
+h        = 1.0                 # nondimensional box height
+w        = 1.0                 # box of aspect ratio 1
+dx       = 0.015                # discretization step in meters
+dz       = 0.015
+nx       = w/dx+1
+nx       = int(nx)
+nz       = h/dz+1
+nz       = int(nz) 
+niveles_z = nz      
+niveles_x = nx 
+x        = np.linspace(0,w,niveles_x) # array for the finite difference mesh
+z        = np.linspace(0,h,niveles_z)
+dx       = w/(nx-1)            # Adjust requested dx & dz to fit in equidistant grid space
+dz       = h/(nz-1) 
+[xx,zz]  = np.meshgrid(x,z)
+print nx,'nx',nz,'nz'
+nxz=3*nx*nz
+
 # Dimensional variables:
 kappa    = 1e-6                # thermal diffusivity
 Tm       = 1650                # mantle temperature in degC
@@ -285,45 +308,29 @@ hdim     = 1000e3              # dimensional height of box: 1000 km
 eta      = 1e22                # How can I use a none constant viscosity?
 rho      = 3400.              
 
-#Ra       = 1e5
-# Mesh setup:
-h        = 1.0                 # nondimensional box height
-w        = 1.0                 # box of aspect ratio 1
-dx       = 0.015                # discretization step in meters
-dz       = 0.015
-nx       = w/dx+1
-nx       = int(nx)
-nz       = h/dz+1
-nz       = int(nz) 
-
-niveles_z = nz      
-niveles_x = nx 
-
-x        = np.linspace(0,w,niveles_x) # array for the finite difference mesh
-z        = np.linspace(0,h,niveles_z)
-dx       = w/(nx-1)            # Adjust requested dx & dz to fit in equidistant grid space
-dz       = h/(nz-1) 
-[xx,zz]  = np.meshgrid(x,z)
-
-print nx,'nx',nz,'nz'
-nxz=3*nx*nz
-
-
-
+###################################################################################################################################################
+# initial density distribution (can imposrted from LiMod)
+###################################################################################################################################################
              # create rhs (buoyancy force) vector
 drho = np.zeros(np.shape(xx))    # create density distribution matrix
 drho = 1.*np.ones(np.shape(xx))
 drho[0:int(nx/3),:]=0.956         # Symmetric buoyancy for both odd and even 
 drho[int(nx/3):int(nx/2),:]=0.97 
-
+###################################################################################################################################################
+# Raleight number; A the moment calculated with constant density; Will adapt this part where it will be calculated using density distribution from 
+# LitMod
+###################################################################################################################################################
 Ra  = np.zeros(nxz)
 Ra  = (alpha*rho*g*Tm*(hdim**3))/(eta*kappa)
 print Ra,'Ra'
+###################################################################################################################################################
+# Inialising topography array
+###################################################################################################################################################
 topo_ini = np.linspace(0,w,niveles_x)
-#import Stokes2D
 
-
+###################################################################################################################################################
 # Time variables:
+###################################################################################################################################################
 dt_diff  = 0.2*(dx**2)          # timestep in seconds
 print dt_diff, 'timestp in seconds'
 nt       = 700                 # number of tsteps
@@ -332,14 +339,13 @@ print dt_diff/3600/24/365      # time step in years
 t        = 0                   # set initial time to zero
 nplot    = 10                   # plotting interval: plot every nplot timesteps
 
-# Initial condition:
-
+###################################################################################################################################################
+# Initial temperature distribution; This will also be taken from LiMod
+###################################################################################################################################################
 Ttop     = Tlab                   # surface T
 Told     = 1.*np.ones(np.shape(xx)) # Initial temperature T=0.9 everywhere
 print np.shape(xx)
 Told[(zz==0)]=Ttop
-
-
 Told[(zz>0.0e3/hdim) & (zz<100e3/hdim)]=1350./Tm
 Told[(zz>100e3/hdim) & (zz<200e3/hdim)]=1360./Tm
 Told[(zz>200e3/hdim) & (zz<300e3/hdim)]=1380./Tm
@@ -377,39 +383,37 @@ nplot=5
 print nplot, 'nplot'
 # timestepping
 for it in range(1,nt):
-    
-   # Stokes velocity
+	################################################################################################################################################### 
+   	# Stokes velocity
+        ###################################################################################################################################################
         [pp,vx,vz] = Stokes2Dfunc(Ra, Told, xx, zz)
         #vx[:,0]=500000. #this imposed velocity is not being added to stokes velocity
-    # Calculate topography
+        ###################################################################################################################################################
+        # Calculate topography
+        ###################################################################################################################################################        
         topo=-(2*vz[1,:]/dz-pp[0,:])*g*rho/Ra
         avtopo=np.sum(topo)/np.size(topo)
         topo = topo-avtopo
         topo2 = topo_ini+topo
-
-    
-    # Calculate next Courant timestep:
+        # Calculate next Courant timestep:
         vxmax    = (abs(vx)).max()
         vzmax    = (abs(vz)).max()
         dt_adv   = min(dx/vxmax,dz/vzmax)  # advection timestep
-        
         dt       = 0.5*min(dt_diff, dt_adv)  # total timestep
-        
-    # numerical solution
+	###################################################################################################################################################
+	# Advect temeperature with velocities from Stokes 	
+	###################################################################################################################################################
+	# numerical solution
         Tnew = twoDadvdiff(Told,vx,vz,dx,dz,dt)
-
-    #update time
+        #update time
         t=t+dt
-
-    # plot solution:
+        ###################################################################################################################################################
+        # Plotting part
+        ###################################################################################################################################################
         if (it%nplot==0):
-            tmyrs=round(t*hdim**2/kappa/secinmyr,2)
-             # dimensional time in Myrs
-            
-	    fig1 = plt.figure(1)
+            tmyrs=round(t*hdim**2/kappa/secinmyr,2) # dimensional time in Myrs
+       	    fig1 = plt.figure(1)
             fig1.clf()
-            # Set up GridSpec
-            #gs = gridspec.GridSpec(6, 6)
 	    gs = gridspec.GridSpec(3, 1,height_ratios=[1,1,3])
             ax1 = plt.subplot(gs[0]) #(gs[0:3, 0:])  # Temperature
             ax1.plot(x*hdim*1e-3,topo)
@@ -417,24 +421,19 @@ for it in range(1,nt):
 	    plt.ylabel('Topography (km)')
             ax2 = plt.subplot(gs[1]) #(gs[0:3, 0:])  # Temperature
             ax2.plot(x*hdim*1e-3,topo2)
-            #plt.title('T after '+str(tmyrs)+' Myrs')
 	    plt.ylabel('Topography (km)')
-            
 	    ax3 = plt.subplot(gs[2]) #(gs[3:6, 0:])  # New density
 	    ax3.imshow(Tnew*Tm, 
                    extent=(0,h*1000.,h*500.,0),
                    clim=(Tlab,1.0*Tm),
                    interpolation='bilinear', 
                    cmap='jet')
-            #plt.colorbar(orientation='horizontal', shrink=0.8)
+            #plt.colorbar(orientation='horizontal', shrink=0.8) ## fix this colorbar thing
             ax3.quiver(xx*1000., (h-zz)*500., vx, -vz, units='width')
             #plt.title('T after '+str(tmyrs)+' Myrs')
 	    plt.ylabel('Depth (km)')
 	    plt.xlabel('Distance (km)')            
 	    plt.draw()
 	    plt.pause(0.01)
-            
-            
     # prepare for next time step:
         Told = Tnew
-        #plt.show()  
