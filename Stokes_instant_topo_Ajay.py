@@ -410,19 +410,24 @@ for it in range(1,nt):
             fig1.clf()
             # Set up GridSpec
             #gs = gridspec.GridSpec(6, 6)
-	    gs = gridspec.GridSpec(2, 1,height_ratios=[1,3])
+	    gs = gridspec.GridSpec(3, 1,height_ratios=[1,1,3])
             ax1 = plt.subplot(gs[0]) #(gs[0:3, 0:])  # Temperature
-            ax1.plot(x*hdim*1e-3,topo2)
+            ax1.plot(x*hdim*1e-3,topo)
             plt.title('T after '+str(tmyrs)+' Myrs')
 	    plt.ylabel('Topography (km)')
-            ax2 = plt.subplot(gs[1]) #(gs[3:6, 0:])  # New density
-	    ax2.imshow(Tnew*Tm, 
+            ax2 = plt.subplot(gs[1]) #(gs[0:3, 0:])  # Temperature
+            ax2.plot(x*hdim*1e-3,topo2)
+            #plt.title('T after '+str(tmyrs)+' Myrs')
+	    plt.ylabel('Topography (km)')
+            
+	    ax3 = plt.subplot(gs[2]) #(gs[3:6, 0:])  # New density
+	    ax3.imshow(Tnew*Tm, 
                    extent=(0,h*1000.,h*500.,0),
                    clim=(Tlab,1.0*Tm),
                    interpolation='bilinear', 
                    cmap='jet')
             #plt.colorbar(orientation='horizontal', shrink=0.8)
-            ax2.quiver(xx*1000., (h-zz)*500., vx, -vz, units='width')
+            ax3.quiver(xx*1000., (h-zz)*500., vx, -vz, units='width')
             #plt.title('T after '+str(tmyrs)+' Myrs')
 	    plt.ylabel('Depth (km)')
 	    plt.xlabel('Distance (km)')            
