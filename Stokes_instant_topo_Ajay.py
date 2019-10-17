@@ -20,8 +20,20 @@ import matplotlib.gridspec as gridspec
 
 
 # Subfunctions: 
-def prep_model(x,y,T,D,step):
-    
+def interpolate_2D(x,y,z,profile_len,reso,step):
+    print('Model info \n')
+    #reso=input('Enter resolution along the profile: \n')
+    #reso=5
+    #profile_len=input('Enter resolution the profile length: \n')
+    #profile_len=625 
+    f = RegularGridInterpolator((x, y), z) #interpolate.interp2d(y,x,z,kind='linear')
+    #x_new = np.arange(min(x_),max(x_),step=step)
+    #y_new = np.arange(min(y_),max(y_),step=step)
+    #points = np.array([x_new,y_new])
+    #z_new = f(points)
+    return f
+
+   
 
 
 
@@ -165,8 +177,8 @@ def Stokes2Dfunc(Ra, T, xx, zz):
             
             # rhs: Ra*T'
             avT  = 0.5*(T[iz-1,ix-1]+T[iz-1,ix])
-            rhs[irow] = avT*Ra
-            print 'you are using advT'
+            rhs[irow] = avT*Ra[iz,ix]
+            #print 'you are using advT'
             # rhs: Ra*drho'
             #avdrho  = 0.5*(drho[iz-1,ix-1]+drho[iz-1,ix])
             #rhs[irow] = avdrho*Ra
@@ -289,8 +301,8 @@ def twoDadvdiff (fin,vx,vz,dx,dz,dt):
 ###################################################################################################################################################
 h        = 1.0                 # nondimensional box height
 w        = 1.0                 # box of aspect ratio 1
-dx       = 0.015                # discretization step in meters
-dz       = 0.015
+dx       = 0.01                # discretization step in meters
+dz       = 0.01
 nx       = w/dx+1
 nx       = int(nx)
 nz       = h/dz+1
@@ -312,10 +324,48 @@ Tlab     = 1320
 deltaT   = Tm-Tlab
 g        = 9.81
 alpha    = 3e-5                # K-1
-hdim     = 1000e3              # dimensional height of box: 1000 km
+hdim     = 400e3              # dimensional height of box: 1000 km
 eta      = 1e22                # How can I use a none constant viscosity?
 rho      = 3400.              
 
+###################################################################################################################################################
+# initial density distribution from LiMod2D)
+###################################################################################################################################################
+data= np.loadtxt('post_processing_output.dat',usecols=(0,1,2,3,4,5,6))
+reso = 5
+profile_len=625
+depth=400 
+step=0.05
+y_=-data[0:95,1]/400
+t=np.arange(0,profile_len+reso,reso)
+x_=t/profile_len
+print len(x_)
+print len(y_)
+T=[]
+D=[]
+temp=0
+for i in range(len(x_)):
+  T_ = []
+  D_ = []
+  for j in range(len(y_)):
+    T_.append(data[temp,2])
+    D_.append(data[temp,6])
+    temp=temp+1
+  T.append(T_)
+  D.append(D_)
+### making X,Y grid
+X,Y=np.meshgrid(y_,x_)
+T_func= interpolate_2D(x_,y_,T,profile_len,5,step)
+D_func= interpolate_2D(x_,y_,D,profile_len,5,step)
+drho = 1.*np.ones(np.shape(xx))
+Told     = 1.*np.ones(np.shape(xx))
+m,n=np.shape(xx)
+for i in range(m-1):
+    for j in range(n-1):
+        #print xx[i,j],zz[i,j]
+        Told[i,j]=T_func((xx[i,j],zz[i,j]))
+        drho[i,j]=D_func([xx[i,j],zz[i,j]])
+'''
 ###################################################################################################################################################
 # initial density distribution (can imposrted from LiMod)
 ###################################################################################################################################################
@@ -324,13 +374,25 @@ drho = np.zeros(np.shape(xx))    # create density distribution matrix
 drho = 3300.*np.ones(np.shape(xx))
 drho[0:int(nx/3),:]=3300        # Symmetric buoyancy for both odd and even 
 drho[int(nx/3):int(nx/2),:]=3300 
+'''
 ###################################################################################################################################################
 # Raleight number; At the moment calculated with constant density; Will adapt this part where it will be calculated using density distribution from 
 # LitMod
 ###################################################################################################################################################
 Ra  = np.zeros(nxz)
-Ra  = (alpha*rho*g*Tm*(hdim**3))/(eta*kappa)
+Ra  = (alpha*drho*g*Told*(hdim**3))/(eta*kappa)
 print Ra,'Ra'
+'''
+Ra  = np.zeros(np.shape(xx))
+#Ra  = (alpha*3000*g*1300*(hdim**3))/(eta*kappa)
+m,n=np.shape(xx)
+for i in range(m-1):
+    for j in range(n-1):
+        #print xx[i,j],zz[i,j]
+        Ra[i,j]= (alpha*drho[i,j]*g*Told[i,j]*(hdim**3))/(eta*kappa)#  T_func((xx[i,j],zz[i,j]))
+        #drho[i,j]=D_func([xx[i,j],zz[i,j]])
+'''
+#print Ra,'Ra'
 ###################################################################################################################################################
 # Inialising topography array
 ###################################################################################################################################################
@@ -350,9 +412,9 @@ nplot    = 10                   # plotting interval: plot every nplot timesteps
 ###################################################################################################################################################
 # Initial temperature distribution; This will also be taken from LiMod
 ###################################################################################################################################################
-Ttop     = Tlab                   # surface T
-Told     = 1.*np.ones(np.shape(xx)) # Initial temperature T=0.9 everywhere
-print np.shape(xx)
+#Ttop     = Tlab                   # surface T
+#Told     = 1.*np.ones(np.shape(xx)) # Initial temperature T=0.9 everywhere
+#print np.shape(xx)
 '''
 Told[(zz==0)]=Ttop
 Told[(zz>0.0e3/hdim) & (zz<100e3/hdim)]=1350./Tm
@@ -401,10 +463,18 @@ for it in range(1,nt):
         ###################################################################################################################################################
         # Calculate topography
         ###################################################################################################################################################        
+        # Calculate topography
+        #topo=-(2*vz[1,:]/dz-pp[0,:])*kappa*1e27/Ra[:,1]/4000/10/1000e3**2
+        #topo=-(2*vz[1,:]/dz-pp[0,:])*g*drho[1,:]/Ra[1,:]
+        topo =pp[0,:]*profile_len
+        avtopo=np.sum(topo)/np.size(topo)
+        topo = topo-avtopo
+        '''
         topo=-(2*vz[1,:]/dz-pp[0,:])*g*rho/Ra
         avtopo=np.sum(topo)/np.size(topo)
         topo = topo-avtopo
         topo2 = topo_ini+topo
+        '''
         # Calculate next Courant timestep:
         vxmax    = (abs(vx)).max()
         vzmax    = (abs(vz)).max()
@@ -423,36 +493,52 @@ for it in range(1,nt):
         if (it%nplot==0):
             tmyrs=round(t*hdim**2/kappa/secinmyr,2) # dimensional time in Myrs
        	    fig1 = plt.figure(1)
+            fig1.set_size_inches(18.5, 10.5, forward=True)
             fig1.clf()
+            # Set up GridSpec
+            #gs = gridspec.GridSpec(3, 1)
+            ax1 = plt.subplot2grid((4, 1), (0, 0)) # plt.subplot(gs[0:1, 2:])  # Temperature
+            #ax2 =  plt.subplot2grid((4, 1), (1, 0)) #plt.subplot(gs[3:6, 6:])  # New density
+            ax3 = plt.subplot2grid((4, 1), (2, 0),colspan=2, rowspan=2)  #plt.subplot(gs[1:, 0:1])  # Temp profile
+            
             #gs = gridspec.GridSpec(3, 1,height_ratios=[1,1,3])
-            ax1 = plt.subplot(311) #(gs[0:3, 0:])  # Temperature
-            ax1.plot(x*hdim*1e-3,topo)
-            plt.title('T after '+str(tmyrs)+' Myrs')
-            plt.ylabel('Topography (km)')
-            ax2 = plt.subplot(312) #(gs[0:3, 0:])  # Temperature
-            ax2.plot(x*hdim*1e-3,topo2)
-            plt.ylabel('Topography (km)')
-            ax3 = plt.subplot(313) #(gs[3:6, 0:])  # New density
-            im1 = ax3.imshow(Tnew*Tm, 
-                   extent=(0,h*1000.,h*400.,0),
+            #ax1 = plt.subplot(311) #(gs[0:3, 0:])  # Temperature
+            ax1.plot(x*profile_len,topo)
+            ax1.set_title('T after '+str(tmyrs)+' Myrs')
+            ax1.set_ylabel('Topography (km)')
+            #ax2 = plt.subplot(312) #(gs[0:3, 0:])  # Temperature
+            #ax2.plot(x*hdim*1e-3,topo2)
+            #plt.ylabel('Topography (km)')
+            #ax3 = plt.subplot(313) #(gs[3:6, 0:])  # New density
+            im1 = ax3.imshow(Tnew, 
+                   extent=(0,h*profile_len,h*depth,0),
                    #clim=(Tlab,1.0*Tm),
                    interpolation='bilinear', 
                    cmap='jet')
+            #ax3.invert_yaxis()
             #ax3.set_xticklabels(xtick_label,fontsize=12)
             #ax3.set_yticklabels(ytick_label,fontsize=12)
             divider = make_axes_locatable(ax3)
             cax = divider.append_axes("right", size="2%", pad=0.2)
-            cbar = plt.colorbar(im1, cax=cax,ticks=np.linspace(0,Tm,1  0))
+            cbar = plt.colorbar(im1, cax=cax,ticks=np.linspace(500,1500,6))
             cbar.ax.invert_yaxis()
             cbar.ax.set_title('$^{\circ}C$',fontsize=11)
             cbar.ax.tick_params(labelsize=12) 
             ax3.axis('equal')
-            
+            ax3.set_ylabel('Depth (km)')
+            ax3.set_xlabel('Distance (km)')
+            #ax3.set_xticklabels(xtick_label,fontsize=12)
+            #ax3.set_yticklabels(ytick_label,fontsize=12)
+            #plt.colorbar(orientation='horizontal', shrink=0.8)
+            #plt.quiver(xx*profile_len, (h-zz)*depth, vx, -vz, units='width')
+            plt.title('T after '+str(tmyrs)+' Myrs')
             #fig1.colorbar(neg, ax=ax3)
             #ax3.colorbar(orientation='horizontal', shrink=0.8) ## fix this colorbar thing
-            ax3.quiver(xx*1000., (h-zz)*400., vx, -vz, units='width')
-            plt.ylabel('Depth (km)')
-            plt.xlabel('Distance (km)')
+            Q = ax3.quiver(xx*profile_len, (h-zz)*depth, vx, -vz, units='width')
+            qk = ax3.quiverkey(Q, 0.9, 0.9, 2, r'$2 \frac{m}{s}$', labelpos='E',
+                   coordinates='figure')
+            #ax3.quiver(xx*profile_len, (h-zz)*depth, vx, -vz, units='width')
+            
             plt.draw()
             plt.pause(0.01)
         # prepare for next time step:

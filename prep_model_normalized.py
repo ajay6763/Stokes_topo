@@ -102,7 +102,9 @@ for i in range(m-1):
 		#print xx[i,j],zz[i,j]
 		Told[i,j]=T_func((xx[i,j],zz[i,j]))
 		drho[i,j]=D_func([xx[i,j],zz[i,j]])
-
+Ra  = np.zeros(nxz)
+Ra  = (alpha*drho*g*Told*(hdim**3))/(eta*kappa)
+print Ra,'Ra'
 ax3= plt.subplot(223)
 plt.contourf(Told,40,cmap='RdGy_r')
 plt.gca().invert_yaxis()
