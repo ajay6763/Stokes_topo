@@ -1,8 +1,10 @@
+#!/usr/bin/python
+from __future__ import division
 import time
 starttime = time.time()
 #import Stokes2D is not being imported
 
-
+from scipy.interpolate import RegularGridInterpolator ## interpolation to regularised grid 
 import numpy as np
 import scipy
 import scipy.sparse            # Needed for some older Spyder versions
@@ -18,6 +20,12 @@ import matplotlib.gridspec as gridspec
 
 
 # Subfunctions: 
+def prep_model(x,y,T,D,step):
+    
+
+
+
+
 def idp(ix,iz,nz):
     # purpose: find index value for the p component in 2-D Stokes matrix
     fout = 3*((ix-1)*nz + iz) - 3
@@ -300,7 +308,7 @@ nxz=3*nx*nz
 # Dimensional variables:
 kappa    = 1e-6                # thermal diffusivity
 Tm       = 1650                # mantle temperature in degC
-Tlab     = 1350
+Tlab     = 1320
 deltaT   = Tm-Tlab
 g        = 9.81
 alpha    = 3e-5                # K-1
@@ -313,11 +321,11 @@ rho      = 3400.
 ###################################################################################################################################################
              # create rhs (buoyancy force) vector
 drho = np.zeros(np.shape(xx))    # create density distribution matrix
-drho = 1.*np.ones(np.shape(xx))
-drho[0:int(nx/3),:]=0.956         # Symmetric buoyancy for both odd and even 
-drho[int(nx/3):int(nx/2),:]=0.97 
+drho = 3300.*np.ones(np.shape(xx))
+drho[0:int(nx/3),:]=3300        # Symmetric buoyancy for both odd and even 
+drho[int(nx/3):int(nx/2),:]=3300 
 ###################################################################################################################################################
-# Raleight number; A the moment calculated with constant density; Will adapt this part where it will be calculated using density distribution from 
+# Raleight number; At the moment calculated with constant density; Will adapt this part where it will be calculated using density distribution from 
 # LitMod
 ###################################################################################################################################################
 Ra  = np.zeros(nxz)
@@ -345,6 +353,7 @@ nplot    = 10                   # plotting interval: plot every nplot timesteps
 Ttop     = Tlab                   # surface T
 Told     = 1.*np.ones(np.shape(xx)) # Initial temperature T=0.9 everywhere
 print np.shape(xx)
+'''
 Told[(zz==0)]=Ttop
 Told[(zz>0.0e3/hdim) & (zz<100e3/hdim)]=1350./Tm
 Told[(zz>100e3/hdim) & (zz<200e3/hdim)]=1360./Tm
@@ -356,10 +365,11 @@ Told[(zz>600e3/hdim) & (zz<700e3/hdim)]=1550./Tm
 Told[(zz>700e3/hdim) & (zz<800e3/hdim)]=1600./Tm
 Told[(zz>0.0e3/hdim) & (zz<300e3/hdim) & (xx>200e3/hdim) & (xx<800e3/hdim)]=1350./Tm
 Told[(zz>100.0e3/hdim) & (zz<400e3/hdim) & (xx>400e3/hdim) & (xx<500e3/hdim)]=1450./Tm
+'''
 #for zz[:] > 0.5:
 #    Told= Told + 0.01*np.random.random(np.shape(xx))  # Add random noise
 #Told     = Told + np.random.binomial(2,0.25)
-Told[0,:]=Tlab/Tm                   # Set top and bottom T to 0 and 1 resp.
+Told[0,:]=0 #Tlab/Tm                   # Set top and bottom T to 0 and 1 resp.
 Told[-1,:]=1.
 '''
 plt.figure(2,figsize=(10,10))
@@ -414,26 +424,36 @@ for it in range(1,nt):
             tmyrs=round(t*hdim**2/kappa/secinmyr,2) # dimensional time in Myrs
        	    fig1 = plt.figure(1)
             fig1.clf()
-	    gs = gridspec.GridSpec(3, 1,height_ratios=[1,1,3])
-            ax1 = plt.subplot(gs[0]) #(gs[0:3, 0:])  # Temperature
+            #gs = gridspec.GridSpec(3, 1,height_ratios=[1,1,3])
+            ax1 = plt.subplot(311) #(gs[0:3, 0:])  # Temperature
             ax1.plot(x*hdim*1e-3,topo)
             plt.title('T after '+str(tmyrs)+' Myrs')
-	    plt.ylabel('Topography (km)')
-            ax2 = plt.subplot(gs[1]) #(gs[0:3, 0:])  # Temperature
+            plt.ylabel('Topography (km)')
+            ax2 = plt.subplot(312) #(gs[0:3, 0:])  # Temperature
             ax2.plot(x*hdim*1e-3,topo2)
-	    plt.ylabel('Topography (km)')
-	    ax3 = plt.subplot(gs[2]) #(gs[3:6, 0:])  # New density
-	    ax3.imshow(Tnew*Tm, 
-                   extent=(0,h*1000.,h*500.,0),
-                   clim=(Tlab,1.0*Tm),
+            plt.ylabel('Topography (km)')
+            ax3 = plt.subplot(313) #(gs[3:6, 0:])  # New density
+            im1 = ax3.imshow(Tnew*Tm, 
+                   extent=(0,h*1000.,h*400.,0),
+                   #clim=(Tlab,1.0*Tm),
                    interpolation='bilinear', 
                    cmap='jet')
-            #plt.colorbar(orientation='horizontal', shrink=0.8) ## fix this colorbar thing
-            ax3.quiver(xx*1000., (h-zz)*500., vx, -vz, units='width')
-            #plt.title('T after '+str(tmyrs)+' Myrs')
-	    plt.ylabel('Depth (km)')
-	    plt.xlabel('Distance (km)')            
-	    plt.draw()
-	    plt.pause(0.01)
-    # prepare for next time step:
+            #ax3.set_xticklabels(xtick_label,fontsize=12)
+            #ax3.set_yticklabels(ytick_label,fontsize=12)
+            divider = make_axes_locatable(ax3)
+            cax = divider.append_axes("right", size="2%", pad=0.2)
+            cbar = plt.colorbar(im1, cax=cax,ticks=np.linspace(0,Tm,1  0))
+            cbar.ax.invert_yaxis()
+            cbar.ax.set_title('$^{\circ}C$',fontsize=11)
+            cbar.ax.tick_params(labelsize=12) 
+            ax3.axis('equal')
+            
+            #fig1.colorbar(neg, ax=ax3)
+            #ax3.colorbar(orientation='horizontal', shrink=0.8) ## fix this colorbar thing
+            ax3.quiver(xx*1000., (h-zz)*400., vx, -vz, units='width')
+            plt.ylabel('Depth (km)')
+            plt.xlabel('Distance (km)')
+            plt.draw()
+            plt.pause(0.01)
+        # prepare for next time step:
         Told = Tnew
