@@ -32,12 +32,6 @@ def interpolate_2D(x,y,z,profile_len,reso,step):
     #points = np.array([x_new,y_new])
     #z_new = f(points)
     return f
-
-   
-
-
-
-
 def idp(ix,iz,nz):
     # purpose: find index value for the p component in 2-D Stokes matrix
     fout = 3*((ix-1)*nz + iz) - 3
@@ -296,13 +290,25 @@ def twoDadvdiff (fin,vx,vz,dx,dz,dt):
 # Main code: 
 ###################################################################################################################################################
 # Initialisation:
+
+###################################################################################################################################################
+# Dimensional variables:
+kappa    = 1e-6                # thermal diffusivity
+Tm       = 1550                # mantle temperature in degC
+Tlab     = 1320
+deltaT   = Tm-Tlab
+g        = 9.81
+alpha    = 3e-5                # K-1
+hdim     = 400e3              # dimensional height of box: 1000 km
+eta      = 1e22                # How can I use a none constant viscosity?
+rho      = 3400.      
+
 ###################################################################################################################################################
 # Mesh setup:
-###################################################################################################################################################
 h        = 1.0                 # nondimensional box height
 w        = 1.0                 # box of aspect ratio 1
-dx       = 0.01                # discretization step in meters
-dz       = 0.01
+dx       = 0.02                # discretization step in meters
+dz       = 0.02
 nx       = w/dx+1
 nx       = int(nx)
 nz       = h/dz+1
@@ -317,19 +323,10 @@ dz       = h/(nz-1)
 print nx,'nx',nz,'nz'
 nxz=3*nx*nz
 
-# Dimensional variables:
-kappa    = 1e-6                # thermal diffusivity
-Tm       = 1650                # mantle temperature in degC
-Tlab     = 1320
-deltaT   = Tm-Tlab
-g        = 9.81
-alpha    = 3e-5                # K-1
-hdim     = 400e3              # dimensional height of box: 1000 km
-eta      = 1e22                # How can I use a none constant viscosity?
-rho      = 3400.              
+        
 
 ###################################################################################################################################################
-# initial density distribution from LiMod2D)
+# initial density and temperature distribution from LiMod2D)
 ###################################################################################################################################################
 data= np.loadtxt('post_processing_output.dat',usecols=(0,1,2,3,4,5,6))
 reso = 5
@@ -348,8 +345,8 @@ for i in range(len(x_)):
   T_ = []
   D_ = []
   for j in range(len(y_)):
-    T_.append(data[temp,2])
-    D_.append(data[temp,6])
+    T_.append(data[temp,2]/max(data[:,2]))
+    D_.append(data[temp,6]/max(data[:,6]))
     temp=temp+1
   T.append(T_)
   D.append(D_)
@@ -365,22 +362,14 @@ for i in range(m-1):
         #print xx[i,j],zz[i,j]
         Told[i,j]=T_func((xx[i,j],zz[i,j]))
         drho[i,j]=D_func([xx[i,j],zz[i,j]])
-'''
-###################################################################################################################################################
-# initial density distribution (can imposrted from LiMod)
-###################################################################################################################################################
-             # create rhs (buoyancy force) vector
-drho = np.zeros(np.shape(xx))    # create density distribution matrix
-drho = 3300.*np.ones(np.shape(xx))
-drho[0:int(nx/3),:]=3300        # Symmetric buoyancy for both odd and even 
-drho[int(nx/3):int(nx/2),:]=3300 
-'''
+drho[0:int(nx/3),:]=0.5        # Symmetric buoyancy for both odd and even 
+drho[int(nx/3):int(nx/2),:]=0.5
 ###################################################################################################################################################
 # Raleight number; At the moment calculated with constant density; Will adapt this part where it will be calculated using density distribution from 
 # LitMod
 ###################################################################################################################################################
 Ra  = np.zeros(nxz)
-Ra  = (alpha*drho*g*Told*(hdim**3))/(eta*kappa)
+Ra  = (alpha*drho*g*deltaT*(hdim**3))/(eta*kappa)
 print Ra,'Ra'
 '''
 Ra  = np.zeros(np.shape(xx))
@@ -455,7 +444,7 @@ nplot=5
 print nplot, 'nplot'
 # timestepping
 for it in range(1,nt):
-	################################################################################################################################################### 
+    ################################################################################################################################################### 
    	# Stokes velocity
         ###################################################################################################################################################
         [pp,vx,vz] = Stokes2Dfunc(Ra, Told, xx, zz)
@@ -465,10 +454,10 @@ for it in range(1,nt):
         ###################################################################################################################################################        
         # Calculate topography
         #topo=-(2*vz[1,:]/dz-pp[0,:])*kappa*1e27/Ra[:,1]/4000/10/1000e3**2
-        #topo=-(2*vz[1,:]/dz-pp[0,:])*g*drho[1,:]/Ra[1,:]
-        topo =pp[0,:]*profile_len
-        avtopo=np.sum(topo)/np.size(topo)
-        topo = topo-avtopo
+        topo=-(2*vz[1,:]/dz-pp[1,:])*g*drho[1,:]/Ra[1,:]
+        #topo =pp[0,:]*profile_len
+        #avtopo=np.sum(topo)/np.size(topo)
+        #topo = topo-avtopo
         '''
         topo=-(2*vz[1,:]/dz-pp[0,:])*g*rho/Ra
         avtopo=np.sum(topo)/np.size(topo)
@@ -480,7 +469,9 @@ for it in range(1,nt):
         vzmax    = (abs(vz)).max()
         dt_adv   = min(dx/vxmax,dz/vzmax)  # advection timestep
         dt       = 0.5*min(dt_diff, dt_adv)  # total timestep
-	###################################################################################################################################################
+	    
+    
+    ###################################################################################################################################################
 	# Advect temeperature with velocities from Stokes 	
 	###################################################################################################################################################
 	# numerical solution
@@ -492,6 +483,7 @@ for it in range(1,nt):
         ###################################################################################################################################################
         if (it%nplot==0):
             tmyrs=round(t*hdim**2/kappa/secinmyr,2) # dimensional time in Myrs
+            print ("Time :", tmyrs)
        	    fig1 = plt.figure(1)
             fig1.set_size_inches(18.5, 10.5, forward=True)
             fig1.clf()
@@ -510,7 +502,7 @@ for it in range(1,nt):
             #ax2.plot(x*hdim*1e-3,topo2)
             #plt.ylabel('Topography (km)')
             #ax3 = plt.subplot(313) #(gs[3:6, 0:])  # New density
-            im1 = ax3.imshow(Tnew, 
+            im1 = ax3.imshow(Tnew*Tm, 
                    extent=(0,h*profile_len,h*depth,0),
                    #clim=(Tlab,1.0*Tm),
                    interpolation='bilinear', 
@@ -535,7 +527,7 @@ for it in range(1,nt):
             #fig1.colorbar(neg, ax=ax3)
             #ax3.colorbar(orientation='horizontal', shrink=0.8) ## fix this colorbar thing
             Q = ax3.quiver(xx*profile_len, (h-zz)*depth, vx, -vz, units='width')
-            qk = ax3.quiverkey(Q, 0.9, 0.9, 2, r'$2 \frac{m}{s}$', labelpos='E',
+            qk = ax3.quiverkey(Q, 0.2, 0.2, 2, r'$2 \frac{m}{s}$', labelpos='E',
                    coordinates='figure')
             #ax3.quiver(xx*profile_len, (h-zz)*depth, vx, -vz, units='width')
             
