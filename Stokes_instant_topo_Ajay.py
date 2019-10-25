@@ -10,7 +10,6 @@ import scipy
 import scipy.sparse            # Needed for some older Spyder versions
 import scipy.sparse.linalg     # Needed for some older Spyder versions
 
-import matplotlib
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import os
@@ -121,7 +120,7 @@ def preppvxvzplot(pp,vx,vz,xx,islip):
 
 # Main routine: 
 def Stokes2Dfunc(Ra, T, xx, zz):
-    islip = 1  # 1=free-slip -1=no-slip
+    islip = 1 # 1=free-slip -1=no-slip
     
     [nz,nx] = np.shape(xx)
     nxz=3*nx*nz  # total nr of unknowns (nx * nz * (vx+vz+p))
@@ -308,7 +307,7 @@ rho      = 3400.
 h        = 1.0                 # nondimensional box height
 w        = 1.0                 # box of aspect ratio 1
 dx       = 0.02                # discretization step in meters
-dz       = 0.02
+dz       = 0.05
 nx       = w/dx+1
 nx       = int(nx)
 nz       = h/dz+1
@@ -329,6 +328,10 @@ nxz=3*nx*nz
 # initial density and temperature distribution from LiMod2D)
 ###################################################################################################################################################
 data= np.loadtxt('post_processing_output.dat',usecols=(0,1,2,3,4,5,6))
+Tm       = max(data[:,2])                # mantle temperature in degC
+Tlab     = 1320
+deltaT   = Tm-Tlab
+
 reso = 5
 profile_len=625
 depth=400 
@@ -357,8 +360,8 @@ D_func= interpolate_2D(x_,y_,D,profile_len,5,step)
 drho = 1.*np.ones(np.shape(xx))
 Told     = 1.*np.ones(np.shape(xx))
 m,n=np.shape(xx)
-for i in range(m-1):
-    for j in range(n-1):
+for i in range(m):
+    for j in range(n):
         #print xx[i,j],zz[i,j]
         Told[i,j]=T_func((xx[i,j],zz[i,j]))
         drho[i,j]=D_func([xx[i,j],zz[i,j]])
@@ -368,31 +371,32 @@ drho[int(nx/3):int(nx/2),:]=0.5
 # Raleight number; At the moment calculated with constant density; Will adapt this part where it will be calculated using density distribution from 
 # LitMod
 ###################################################################################################################################################
+'''
 Ra  = np.zeros(nxz)
 Ra  = (alpha*drho*g*deltaT*(hdim**3))/(eta*kappa)
 print Ra,'Ra'
 '''
-Ra  = np.zeros(np.shape(xx))
+Raold  = np.zeros(np.shape(xx))
 #Ra  = (alpha*3000*g*1300*(hdim**3))/(eta*kappa)
 m,n=np.shape(xx)
-for i in range(m-1):
-    for j in range(n-1):
+for i in range(m):
+    for j in range(n):
         #print xx[i,j],zz[i,j]
-        Ra[i,j]= (alpha*drho[i,j]*g*Told[i,j]*(hdim**3))/(eta*kappa)#  T_func((xx[i,j],zz[i,j]))
+        Raold[i,j]= (alpha*drho[i,j]*g*Told[i,j]*(hdim**3))/(eta*kappa)#  T_func((xx[i,j],zz[i,j]))
         #drho[i,j]=D_func([xx[i,j],zz[i,j]])
-'''
+
 #print Ra,'Ra'
 ###################################################################################################################################################
 # Inialising topography array
 ###################################################################################################################################################
 topo_ini = np.linspace(0,w,niveles_x)
-
+topo_obs = np.loadtxt('topo.inp')
 ###################################################################################################################################################
 # Time variables:
 ###################################################################################################################################################
 dt_diff  = 0.2*(dx**2)          # timestep in seconds
 print dt_diff, 'timestp in seconds'
-nt       = 700                 # number of tsteps
+nt       = 20                 # number of tsteps
 secinmyr = 1e6*365*24*3600     # amount of seconds in 1 Myr
 print dt_diff/3600/24/365      # time step in years
 t        = 0                   # set initial time to zero
@@ -420,8 +424,6 @@ Told[(zz>100.0e3/hdim) & (zz<400e3/hdim) & (xx>400e3/hdim) & (xx<500e3/hdim)]=14
 #for zz[:] > 0.5:
 #    Told= Told + 0.01*np.random.random(np.shape(xx))  # Add random noise
 #Told     = Told + np.random.binomial(2,0.25)
-Told[0,:]=0 #Tlab/Tm                   # Set top and bottom T to 0 and 1 resp.
-Told[-1,:]=1.
 '''
 plt.figure(2,figsize=(10,10))
 plt.imshow(Told*Tm, 
@@ -447,17 +449,17 @@ for it in range(1,nt):
     ################################################################################################################################################### 
    	# Stokes velocity
         ###################################################################################################################################################
-        [pp,vx,vz] = Stokes2Dfunc(Ra, Told, xx, zz)
+        [pp,vx,vz] = Stokes2Dfunc(Raold, Told, xx, zz)
         #vx[:,0]=500000. #this imposed velocity is not being added to stokes velocity
         ###################################################################################################################################################
         # Calculate topography
         ###################################################################################################################################################        
         # Calculate topography
         #topo=-(2*vz[1,:]/dz-pp[0,:])*kappa*1e27/Ra[:,1]/4000/10/1000e3**2
-        topo=-(2*vz[1,:]/dz-pp[1,:])*g*drho[1,:]/Ra[1,:]
+        topo=-(2*vz[0,:]/dz-pp[0,:])*g*drho[0,:]/Raold[0,:]
         #topo =pp[0,:]*profile_len
         #avtopo=np.sum(topo)/np.size(topo)
-        #topo = topo-avtopo
+        #topo = topo/max(topo)
         '''
         topo=-(2*vz[1,:]/dz-pp[0,:])*g*rho/Ra
         avtopo=np.sum(topo)/np.size(topo)
@@ -476,6 +478,7 @@ for it in range(1,nt):
 	###################################################################################################################################################
 	# numerical solution
         Tnew = twoDadvdiff(Told,vx,vz,dx,dz,dt)
+        Ranew = twoDadvdiff(Raold,vx,vz,dx,dz,dt)
         #update time
         t=t+dt
         ###################################################################################################################################################
@@ -485,53 +488,75 @@ for it in range(1,nt):
             tmyrs=round(t*hdim**2/kappa/secinmyr,2) # dimensional time in Myrs
             print ("Time :", tmyrs)
        	    fig1 = plt.figure(1)
-            fig1.set_size_inches(18.5, 10.5, forward=True)
-            fig1.clf()
+            #fig1.set_size_inches(18.5, 10.5, forward=True)
+            #fig1.clf()
+            gs = gridspec.GridSpec(4, 1,height_ratios=[1,1,2,2])
             # Set up GridSpec
             #gs = gridspec.GridSpec(3, 1)
-            ax1 = plt.subplot2grid((4, 1), (0, 0)) # plt.subplot(gs[0:1, 2:])  # Temperature
+            ax1 = plt.subplot(gs[0]) # plt.subplot(gs[0:1, 2:])  # Temperature
             #ax2 =  plt.subplot2grid((4, 1), (1, 0)) #plt.subplot(gs[3:6, 6:])  # New density
-            ax3 = plt.subplot2grid((4, 1), (2, 0),colspan=2, rowspan=2)  #plt.subplot(gs[1:, 0:1])  # Temp profile
-            
             #gs = gridspec.GridSpec(3, 1,height_ratios=[1,1,3])
             #ax1 = plt.subplot(311) #(gs[0:3, 0:])  # Temperature
-            ax1.plot(x*profile_len,topo)
+            ax1.plot(x*profile_len,vz[0,:])
+            ax4 = plt.subplot(gs[1]) # plt.subplot(gs[0:1, 2:])  # Temperature
+            ax4.plot(x*profile_len,pp[0,:])
+            topo_ob_plt=topo_obs[:,1]/max(topo_obs[:,1])
+            #ax1.plot(topo_obs[:,0],topo_obs[:,1]/1000)
+            
             ax1.set_title('T after '+str(tmyrs)+' Myrs')
             ax1.set_ylabel('Topography (km)')
             #ax2 = plt.subplot(312) #(gs[0:3, 0:])  # Temperature
             #ax2.plot(x*hdim*1e-3,topo2)
             #plt.ylabel('Topography (km)')
             #ax3 = plt.subplot(313) #(gs[3:6, 0:])  # New density
-            im1 = ax3.imshow(Tnew*Tm, 
+            ax2= plt.subplot(gs[2])
+            im2 = plt.imshow(Raold, 
                    extent=(0,h*profile_len,h*depth,0),
                    #clim=(Tlab,1.0*Tm),
-                   interpolation='bilinear', 
+                   interpolation='nearest', 
+                   cmap='jet')
+            divider = make_axes_locatable(ax2)
+            cax = divider.append_axes("right", size="2%", pad=0.2)
+            cbar = plt.colorbar(im2, cax=cax)
+            cbar.ax.set_title('Rayleigh Number',fontsize=11) 
+            ax3 = plt.subplot(gs[3])  #plt.subplot(gs[1:, 0:1])  # Temp profile
+            im1 = plt.imshow(Tnew*Tm, 
+                   extent=(0,h*profile_len,h*depth,0),
+                   #clim=(Tlab,1.0*Tm),
+                   interpolation='nearest', 
                    cmap='jet')
             #ax3.invert_yaxis()
             #ax3.set_xticklabels(xtick_label,fontsize=12)
             #ax3.set_yticklabels(ytick_label,fontsize=12)
+            CS= ax3.contour(Tnew*Tm, [200,600,800,1000,1200,1300,1400,1500], colors='white', origin='image', extent=(0,h*profile_len,h*depth,0))
+            ax3.clabel(CS, inline=1, fontsize=10,fontcolor='white')
+
             divider = make_axes_locatable(ax3)
             cax = divider.append_axes("right", size="2%", pad=0.2)
-            cbar = plt.colorbar(im1, cax=cax,ticks=np.linspace(500,1500,6))
+            cbar = plt.colorbar(im1, cax=cax,ticks=np.linspace(200,1550,6))
             cbar.ax.invert_yaxis()
             cbar.ax.set_title('$^{\circ}C$',fontsize=11)
             cbar.ax.tick_params(labelsize=12) 
-            ax3.axis('equal')
+            #ax3.axis('equal')
             ax3.set_ylabel('Depth (km)')
             ax3.set_xlabel('Distance (km)')
             #ax3.set_xticklabels(xtick_label,fontsize=12)
             #ax3.set_yticklabels(ytick_label,fontsize=12)
             #plt.colorbar(orientation='horizontal', shrink=0.8)
             #plt.quiver(xx*profile_len, (h-zz)*depth, vx, -vz, units='width')
-            plt.title('T after '+str(tmyrs)+' Myrs')
+            ax3.set_title('T after '+str(tmyrs)+' Myrs')
             #fig1.colorbar(neg, ax=ax3)
             #ax3.colorbar(orientation='horizontal', shrink=0.8) ## fix this colorbar thing
             Q = ax3.quiver(xx*profile_len, (h-zz)*depth, vx, -vz, units='width')
-            qk = ax3.quiverkey(Q, 0.2, 0.2, 2, r'$2 \frac{m}{s}$', labelpos='E',
-                   coordinates='figure')
+            #qk = ax3.quiverkey(Q, 0.2, 0.2, 2, r'$2 \frac{m}{s}$', labelpos='E',
+            #       coordinates='figure')
             #ax3.quiver(xx*profile_len, (h-zz)*depth, vx, -vz, units='width')
             
+            #
+            #plt.tightlayout()
+            fig1.set_tight_layout(True)
+            plt.pause(0.0001)
             plt.draw()
-            plt.pause(0.01)
         # prepare for next time step:
         Told = Tnew
+        Raold = Ranew

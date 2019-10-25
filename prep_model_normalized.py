@@ -62,8 +62,8 @@ D_func= interpolate_2D(x_,y_,D,profile_len,5,step)
 ###################################################################################################################################################
 h        = 1.0                 # nondimensional box height
 w        = 1.0                 # box of aspect ratio 1
-dx       = step                # discretization step in meters
-dz       = step
+dx       = 0.05                # discretization step in meters
+dz       = 0.1
 nx       = w/dx+1
 nx       = int(nx)
 nz       = h/dz+1
